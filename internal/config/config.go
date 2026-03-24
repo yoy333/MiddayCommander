@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/BurntSushi/toml"
 )
@@ -57,7 +59,8 @@ type KeyBindings struct {
 	GoTo       StringOrList `toml:"goto"`
 	FuzzyFind  StringOrList `toml:"fuzzy_find"`
 	Bookmarks  StringOrList `toml:"bookmarks"`
-	Help       StringOrList `toml:"help"`
+	Help        StringOrList `toml:"help"`
+	ThemePicker StringOrList `toml:"theme_picker"`
 }
 
 // StringOrList can unmarshal from either a single string or a list of strings.
@@ -111,7 +114,7 @@ func DefaultKeyBindings() KeyBindings {
 		End:      StringOrList{"end"},
 		GoBack:   StringOrList{"backspace"},
 
-		ToggleSelect: StringOrList{"ctrl+t"},
+		ToggleSelect: StringOrList{"insert"},
 		SelectUp:     StringOrList{"shift+up"},
 		SelectDown:   StringOrList{"shift+down"},
 
@@ -120,7 +123,8 @@ func DefaultKeyBindings() KeyBindings {
 		GoTo:      StringOrList{"ctrl+g"},
 		FuzzyFind: StringOrList{"f9", "ctrl+p"},
 		Bookmarks: StringOrList{"f2", "ctrl+b"},
-		Help:      StringOrList{"f1"},
+		Help:        StringOrList{"f1"},
+		ThemePicker: StringOrList{"ctrl+t"},
 	}
 }
 
@@ -181,12 +185,48 @@ func mergeKeys(dst, src *KeyBindings) {
 	mergeKey(&dst.FuzzyFind, src.FuzzyFind)
 	mergeKey(&dst.Bookmarks, src.Bookmarks)
 	mergeKey(&dst.Help, src.Help)
+	mergeKey(&dst.ThemePicker, src.ThemePicker)
 }
 
 func mergeKey(dst *StringOrList, src StringOrList) {
 	if len(src) > 0 {
 		*dst = src
 	}
+}
+
+// SaveTheme writes the theme name to the config file, preserving other settings.
+// An empty name means "use built-in default" and clears the theme setting.
+func SaveTheme(name string) error {
+	dir := configDirPath()
+	configPath := filepath.Join(dir, "config.toml")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if name == "" {
+			return nil // no config file + default theme = nothing to write
+		}
+		// Config file doesn't exist — create it with just the theme line.
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(configPath, []byte(fmt.Sprintf("theme = %q\n", name)), 0o644)
+	}
+
+	content := string(data)
+	themeRe := regexp.MustCompile(`(?m)^\s*theme\s*=\s*"[^"]*"\n?`)
+
+	if name == "" {
+		// Remove the theme line entirely so the app falls back to Default().
+		content = themeRe.ReplaceAllString(content, "")
+	} else if themeRe.MatchString(content) {
+		themeReCapture := regexp.MustCompile(`(?m)^(\s*)theme\s*=\s*"[^"]*"`)
+		content = themeReCapture.ReplaceAllString(content, fmt.Sprintf("${1}theme = %q", name))
+	} else {
+		// Prepend theme line at the top.
+		content = fmt.Sprintf("theme = %q\n", name) + content
+	}
+
+	return os.WriteFile(configPath, []byte(content), 0o644)
 }
 
 // ConfigDir returns the mdc config directory path.

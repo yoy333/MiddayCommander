@@ -13,7 +13,8 @@ Midday Commander (mdc) brings the classic dual-panel file management paradigm in
 - **TOML themes** - full color customization with palette variables (ships with MC Classic and Catppuccin Mocha)
 - **Configurable keybindings** - every key is remappable via `config.toml`
 - **File operations** - copy, move, delete, rename, mkdir with confirmation dialogs
-- **Multi-file selection** - tag files with Ctrl-T or Shift+Arrow for batch operations
+- **Live theme picker** - browse and preview themes in real-time with Ctrl-T
+- **Multi-file selection** - tag files with Insert or Shift+Arrow for batch operations
 - **Quick search** - start typing to jump to matching files instantly
 - **External editor/viewer** - opens files in `$EDITOR` and `$PAGER`
 - **Mouse support** - clickable menu bar and panel interaction
@@ -78,6 +79,7 @@ The left panel opens in the current directory, the right panel in your home dire
 | `Ctrl-G` | Go to path |
 | `Ctrl-P` | Fuzzy finder |
 | `Ctrl-B` | Bookmarks |
+| `Ctrl-T` | Theme picker (live preview) |
 
 ### Navigation
 
@@ -96,7 +98,7 @@ The left panel opens in the current directory, the right panel in your home dire
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-T` | Toggle selection on current file |
+| `Insert` | Toggle selection on current file |
 | `Shift-Up` | Select and move up |
 | `Shift-Down` | Select and move down |
 | `Insert` | Toggle selection and move down |
@@ -163,6 +165,10 @@ Themes are TOML files stored at `~/.config/mdc/themes/`. Two themes are included
 
 - **mc-classic** - Traditional Midnight Commander blue theme
 - **catppuccin-mocha** - Modern dark theme using the [Catppuccin](https://github.com/catppuccin/catppuccin) palette
+
+### Live theme picker
+
+Press `Ctrl-T` to open the theme picker overlay. Use `Up`/`Down` to browse themes with live preview — the entire UI updates instantly as you navigate. Press `Enter` to apply the selected theme or `Esc` to cancel and revert to the previous theme.
 
 ### Installing themes
 

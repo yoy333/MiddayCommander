@@ -20,6 +20,7 @@ import (
 	"github.com/kooler/MiddayCommander/internal/ui/overlay"
 	"github.com/kooler/MiddayCommander/internal/ui/panel"
 	"github.com/kooler/MiddayCommander/internal/ui/theme"
+	"github.com/kooler/MiddayCommander/internal/ui/themepicker"
 	"github.com/kooler/MiddayCommander/internal/vfs/local"
 )
 
@@ -54,10 +55,14 @@ type Model struct {
 	height     int
 
 	// Overlays
-	dialog    *dialog.Model
-	fuzzy     *fuzzy.Model
-	bookmarks *bookmarks.Model
-	help      *help.Model
+	dialog      *dialog.Model
+	fuzzy       *fuzzy.Model
+	bookmarks   *bookmarks.Model
+	help        *help.Model
+	themePicker *themepicker.Model
+
+	// Saved theme for reverting on Esc in theme picker
+	themeBeforePick theme.Theme
 
 	// Bookmark store
 	bookmarkStore *bookmark.Store
@@ -155,6 +160,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Help messages
 	case help.DismissMsg:
 		m.help = nil
+		return m, nil
+
+	// Theme picker messages
+	case themepicker.RemoteThemesMsg:
+		if m.themePicker != nil {
+			m.themePicker.HandleRemote(msg)
+		}
+		return m, nil
+
+	case themepicker.PreviewMsg:
+		m.theme = msg.Theme
+		return m, nil
+
+	case themepicker.SelectMsg:
+		m.theme = msg.Theme
+		m.themePicker = nil
+		// Save remote theme file locally so it's available on next startup.
+		if msg.Source == theme.SourceRemote && len(msg.RawTOML) > 0 {
+			dir := theme.ThemesDir()
+			_ = os.MkdirAll(dir, 0o755)
+			_ = os.WriteFile(filepath.Join(dir, msg.Key+".toml"), msg.RawTOML, 0o644)
+		}
+		_ = config.SaveTheme(msg.Key)
+		return m, nil
+
+	case themepicker.DismissMsg:
+		m.theme = m.themeBeforePick
+		m.themePicker = nil
 		return m, nil
 
 	// Bookmark messages
@@ -269,6 +302,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Theme picker gets priority when active
+		if m.themePicker != nil {
+			newTP, cmd := m.themePicker.Update(msg)
+			m.themePicker = &newTP
+			return m, cmd
+		}
+
 		// Fuzzy finder gets priority when active
 		if m.fuzzy != nil {
 			newFuzzy, cmd := m.fuzzy.Update(msg)
@@ -343,6 +383,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keyMap.Help):
 			return m.startHelp()
+
+		case key.Matches(msg, m.keyMap.ThemePicker):
+			return m.startThemePicker()
 		}
 
 		// Delegate to active panel
@@ -374,12 +417,18 @@ func (m Model) View() string {
 		box := m.bookmarks.View(m.theme, m.width, m.height)
 		bw, bh := m.bookmarks.BoxSize(m.width, m.height)
 		screen = overlay.Place(screen, box, m.width, m.height, bw, bh)
+	} else if m.themePicker != nil {
+		box := m.themePicker.View(m.theme, m.width, m.height)
+		bw, bh := m.themePicker.BoxSize(m.width, m.height)
+		screen = overlay.Place(screen, box, m.width, m.height, bw, bh)
 	} else if m.fuzzy != nil {
 		box := m.fuzzy.View(m.theme, m.width, m.height)
 		bw, bh := m.fuzzy.BoxSize(m.width, m.height)
 		screen = overlay.Place(screen, box, m.width, m.height, bw, bh)
 	} else if m.dialog != nil {
-		screen = m.dialog.View(m.theme, m.width, m.height)
+		box := m.dialog.View(m.theme, m.width, m.height)
+		bw, bh := m.dialog.BoxSize(m.width, m.height)
+		screen = overlay.Place(screen, box, m.width, m.height, bw, bh)
 	}
 
 	return screen
@@ -413,6 +462,8 @@ func (m Model) dispatchKey(raw string) (tea.Model, tea.Cmd) {
 		return m.startBookmarks()
 	case contains(cfg.FuzzyFind, raw):
 		return m.startFuzzyFind()
+	case contains(cfg.ThemePicker, raw):
+		return m.startThemePicker()
 	}
 	return m, nil
 }
@@ -515,6 +566,22 @@ func (m Model) startBookmarks() (tea.Model, tea.Cmd) {
 	bm := bookmarks.New(m.bookmarkStore, m.activePanel().Path(), m.width, m.height)
 	m.bookmarks = &bm
 	return m, nil
+}
+
+func (m Model) startThemePicker() (tea.Model, tea.Cmd) {
+	m.themeBeforePick = m.theme
+	available := theme.ListAvailable()
+	tp := themepicker.New(available, m.width, m.height)
+	m.themePicker = &tp
+
+	// Build set of local keys so remote fetch skips duplicates.
+	localKeys := make(map[string]bool)
+	for _, a := range available {
+		if a.Key != "" {
+			localKeys[a.Key] = true
+		}
+	}
+	return m, themepicker.FetchRemote(localKeys)
 }
 
 func (m Model) startFuzzyFind() (tea.Model, tea.Cmd) {

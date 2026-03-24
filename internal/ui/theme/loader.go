@@ -3,6 +3,7 @@ package theme
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/lipgloss"
@@ -63,19 +64,107 @@ type menuTOML struct {
 	FKeyLabelBG string `toml:"fkey_label_bg"`
 }
 
+// Theme source constants.
+const (
+	SourceDefault = "default"
+	SourceLocal   = "local"
+	SourceRemote  = "remote"
+)
+
+// AvailableTheme represents a discovered theme that can be selected.
+type AvailableTheme struct {
+	Key     string // config key (filename stem, e.g. "catppuccin-mocha")
+	Name    string // display name from TOML "name" field, or filename stem
+	Source  string // SourceDefault, SourceLocal, or SourceRemote
+	Theme   Theme  // pre-loaded theme
+	RawTOML []byte // original TOML content (set for remote themes, used to save locally on select)
+}
+
 // LoadFromFile loads a theme from a TOML file, falling back to Default() for missing values.
 func LoadFromFile(path string) (Theme, error) {
-	data, err := os.ReadFile(path)
+	tf, err := loadThemeFile(path)
 	if err != nil {
 		return Default(), err
 	}
+	return buildTheme(tf), nil
+}
 
+// loadThemeFile reads and parses a theme TOML file.
+func loadThemeFile(path string) (ThemeFile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ThemeFile{}, err
+	}
 	var tf ThemeFile
 	if err := toml.Unmarshal(data, &tf); err != nil {
-		return Default(), err
+		return ThemeFile{}, err
+	}
+	return tf, nil
+}
+
+// ListAvailable returns all available themes: the hardcoded default plus any
+// TOML files found in ~/.config/mdc/themes/.
+func ListAvailable() []AvailableTheme {
+	result := []AvailableTheme{{
+		Key:    "",
+		Name:   "Default (MC Classic)",
+		Source: SourceDefault,
+		Theme:  Default(),
+	}}
+
+	themesDir := filepath.Join(configDirPath(), "themes")
+	entries, err := os.ReadDir(themesDir)
+	if err != nil {
+		return result
 	}
 
-	return buildTheme(tf), nil
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".toml") {
+			continue
+		}
+		key := strings.TrimSuffix(e.Name(), ".toml")
+		path := filepath.Join(themesDir, e.Name())
+		tf, err := loadThemeFile(path)
+		if err != nil {
+			continue
+		}
+		name := tf.Name
+		if name == "" {
+			name = key
+		}
+		result = append(result, AvailableTheme{
+			Key:    key,
+			Name:   name,
+			Source: SourceLocal,
+			Theme:  buildTheme(tf),
+		})
+	}
+
+	return result
+}
+
+// ParseTOML parses raw TOML bytes into an AvailableTheme.
+func ParseTOML(key string, data []byte) (AvailableTheme, error) {
+	var tf ThemeFile
+	if err := toml.Unmarshal(data, &tf); err != nil {
+		return AvailableTheme{}, err
+	}
+	name := tf.Name
+	if name == "" {
+		name = key
+	}
+	return AvailableTheme{
+		Key:     key,
+		Name:    name,
+		Source:  SourceRemote,
+		Theme:   buildTheme(tf),
+		RawTOML: data,
+	}, nil
+}
+
+// ThemesDir returns the path to ~/.config/mdc/themes/.
+func ThemesDir() string {
+	return filepath.Join(configDirPath(), "themes")
 }
 
 // LoadByName loads a theme by name from ~/.config/mdc/themes/<name>.toml.

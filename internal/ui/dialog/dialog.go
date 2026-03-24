@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/kooler/MiddayCommander/internal/ui/overlay"
 	"github.com/kooler/MiddayCommander/internal/ui/theme"
 )
 
@@ -190,101 +191,137 @@ func (m *Model) Close() {
 	m.result = Result{Kind: m.kind, Tag: m.tag}
 }
 
-// View renders the dialog as a centered box.
+// BoxSize returns desired box dimensions.
+func (m Model) BoxSize(screenWidth, screenHeight int) (int, int) {
+	w := m.width
+	if w > screenWidth-4 {
+		w = screenWidth - 4
+	}
+	innerW := w - 2
+	// Height: borders(2) + blank(1) + content + blank(1) + footer(1)
+	var msgLines int
+	if m.kind == KindInput {
+		msgLines = 1 // label + input on one line
+	} else {
+		msgLines = len(wrapText(m.message, innerW-2))
+	}
+	h := 2 + 1 + msgLines + 1 + 1 // borders + blank + content + blank + footer
+	switch m.kind {
+	case KindProgress:
+		h++ // progress bar
+		if m.current != "" {
+			h++ // current file
+		}
+	}
+	maxH := screenHeight * 3 / 4
+	if h > maxH {
+		h = maxH
+	}
+	return w, h
+}
+
+// View renders the dialog as a floating box using the shared overlay style.
 func (m Model) View(th theme.Theme, screenWidth, screenHeight int) string {
-	boxWidth := m.width
-	if boxWidth > screenWidth-4 {
-		boxWidth = screenWidth - 4
-	}
-	innerWidth := boxWidth - 4 // padding
+	boxW, _ := m.BoxSize(screenWidth, screenHeight)
+	innerW := boxW - 2
 
-	borderStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("0"))
-	contentStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("0"))
-	titleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("14")).
-		Background(lipgloss.Color("0")).
-		Bold(true)
+	bg := lipgloss.Color("#1e1e2e")
+	fg := lipgloss.Color("#cdd6f4")
+	subtle := lipgloss.Color("#a6adc8")
+	accent := lipgloss.Color("#89b4fa")
+	highlight := lipgloss.Color("#f9e2af")
 
-	var lines []string
+	bgStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
+	dimStyle := lipgloss.NewStyle().Background(bg).Foreground(subtle)
+	inputStyle := lipgloss.NewStyle().Background(bg).Foreground(highlight)
+	progressStyle := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#a6e3a1"))
+	keyStyle := lipgloss.NewStyle().Background(bg).Foreground(accent).Bold(true)
 
-	// Top border with title
-	titleStr := " " + m.title + " "
-	padLen := innerWidth - len(titleStr)
-	if padLen < 0 {
-		padLen = 0
-	}
-	topBorder := "┌" + titleStr + strings.Repeat("─", padLen) + "┐"
-	lines = append(lines, borderStyle.Render(topBorder))
+	var contentLines []string
 
 	// Empty line
-	lines = append(lines, borderStyle.Render("│")+contentStyle.Render(strings.Repeat(" ", innerWidth+2))+borderStyle.Render("│"))
-
-	// Message
-	for _, msgLine := range wrapText(m.message, innerWidth) {
-		padded := " " + padRight(msgLine, innerWidth) + " "
-		lines = append(lines, borderStyle.Render("│")+contentStyle.Render(padded)+borderStyle.Render("│"))
-	}
-
-	// Empty line
-	lines = append(lines, borderStyle.Render("│")+contentStyle.Render(strings.Repeat(" ", innerWidth+2))+borderStyle.Render("│"))
+	contentLines = append(contentLines, bgStyle.Render(strings.Repeat(" ", innerW)))
 
 	// Kind-specific content
 	switch m.kind {
-	case KindConfirm:
-		hint := " [Y]es  [N]o "
-		padded := " " + padRight(hint, innerWidth) + " "
-		lines = append(lines, borderStyle.Render("│")+titleStyle.Render(padded)+borderStyle.Render("│"))
-
 	case KindInput:
-		// Input field
+		// Message label and input on the same line
+		label := " " + m.message + " "
+		labelW := len(label)
 		inputDisplay := m.input
-		if len(inputDisplay) > innerWidth-2 {
-			inputDisplay = inputDisplay[len(inputDisplay)-innerWidth+2:]
+		maxInput := innerW - labelW - 1 // room for cursor
+		if maxInput < 1 {
+			maxInput = 1
 		}
-		inputLine := " [" + padRight(inputDisplay, innerWidth-2) + "]"
-		if len(inputLine) > innerWidth+2 {
-			inputLine = inputLine[:innerWidth+2]
+		if len(inputDisplay) > maxInput {
+			inputDisplay = inputDisplay[len(inputDisplay)-maxInput:]
 		}
-		inputStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("11")).
-			Background(lipgloss.Color("0"))
-		lines = append(lines, borderStyle.Render("│")+inputStyle.Render(inputLine)+borderStyle.Render("│"))
+		line := dimStyle.Render(label) + inputStyle.Render(inputDisplay+"_")
+		lineW := lipgloss.Width(line)
+		if lineW < innerW {
+			line += bgStyle.Render(strings.Repeat(" ", innerW-lineW))
+		}
+		contentLines = append(contentLines, line)
+
+	default:
+		// Message on its own line(s) for non-input dialogs
+		for _, msgLine := range wrapText(m.message, innerW-2) {
+			line := bgStyle.Render(" " + padRight(msgLine, innerW-1))
+			contentLines = append(contentLines, line)
+		}
+	}
+
+	// Empty line
+	contentLines = append(contentLines, bgStyle.Render(strings.Repeat(" ", innerW)))
+
+	// Kind-specific extra content
+	switch m.kind {
+	case KindInput:
+		// already rendered above
 
 	case KindProgress:
-		// Progress bar
-		barWidth := innerWidth - 2
+		barWidth := innerW - 2
 		filled := int(m.progress * float64(barWidth))
 		if filled > barWidth {
 			filled = barWidth
 		}
-		bar := " " + strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled) + " "
-		progressStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("10")).
-			Background(lipgloss.Color("0"))
-		lines = append(lines, borderStyle.Render("│")+progressStyle.Render(bar)+borderStyle.Render("│"))
-
+		bar := progressStyle.Render(" "+strings.Repeat("█", filled)) +
+			dimStyle.Render(strings.Repeat("░", barWidth-filled)+" ")
+		contentLines = append(contentLines, bar)
 		if m.current != "" {
-			curLine := " " + padRight(m.current, innerWidth) + " "
-			lines = append(lines, borderStyle.Render("│")+contentStyle.Render(curLine)+borderStyle.Render("│"))
+			cur := dimStyle.Render(" " + padRight(m.current, innerW-1))
+			contentLines = append(contentLines, cur)
 		}
-
-	case KindError:
-		hint := " Press Enter to close "
-		padded := " " + padRight(hint, innerWidth) + " "
-		lines = append(lines, borderStyle.Render("│")+titleStyle.Render(padded)+borderStyle.Render("│"))
 	}
 
-	// Bottom border
-	lines = append(lines, borderStyle.Render("└"+strings.Repeat("─", innerWidth+2)+"┘"))
+	// Footer with key hints
+	var footer string
+	switch m.kind {
+	case KindConfirm:
+		footer = keyStyle.Render(" Y") + dimStyle.Render(":Yes") +
+			dimStyle.Render("  ") +
+			keyStyle.Render("N") + dimStyle.Render(":No") +
+			dimStyle.Render("  ") +
+			keyStyle.Render("Esc") + dimStyle.Render(":Cancel")
+	case KindInput:
+		footer = keyStyle.Render(" Enter") + dimStyle.Render(":OK") +
+			dimStyle.Render("  ") +
+			keyStyle.Render("Esc") + dimStyle.Render(":Cancel")
+	case KindProgress:
+		footer = dimStyle.Render(" Working...")
+	case KindError:
+		footer = keyStyle.Render(" Enter") + dimStyle.Render(":Close") +
+			dimStyle.Render("  ") +
+			keyStyle.Render("Esc") + dimStyle.Render(":Close")
+	}
+	footerWidth := lipgloss.Width(footer)
+	if footerWidth < innerW {
+		footer += dimStyle.Render(strings.Repeat(" ", innerW-footerWidth))
+	}
 
-	box := strings.Join(lines, "\n")
-
-	// Center the box on screen
-	return lipgloss.Place(screenWidth, screenHeight, lipgloss.Center, lipgloss.Center, box)
+	boxW2, boxH := m.BoxSize(screenWidth, screenHeight)
+	return overlay.RenderBox(m.title, contentLines, footer, boxW2, boxH,
+		accent, bg, highlight)
 }
 
 func padRight(s string, width int) string {

@@ -95,6 +95,7 @@ func (m Model) buildEntries() []entry {
 		{"Fuzzy find", fmtKeys(k.FuzzyFind)},
 		{"Bookmarks", fmtKeys(k.Bookmarks)},
 		{"Quick search", fmtKeys(k.QuickSearch)},
+		{"Theme picker", fmtKeys(k.ThemePicker)},
 		{"Help", fmtKeys(k.Help)},
 		{"Quit", fmtKeys(k.Quit)},
 	}
