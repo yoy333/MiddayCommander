@@ -1,0 +1,48 @@
+# Midday Commander - Example Configuration
+# Copy to ~/.config/mdc/config.toml to customize.
+
+# Theme name (loads from ~/.config/mdc/themes/<name>.toml)
+# Built-in options: "mc-classic", "catppuccin-mocha"
+# Or place your own .toml in the themes directory.
+theme = "catppuccin-mocha"
+
+# ─── Behavior ────────────────────────────────────
+[behavior]
+# What Enter does on a file: "edit" or "preview"
+enter_action = "edit"
+# What Space does on a file: "preview" or "edit"
+space_action = "preview"
+
+# ─── Key Bindings ────────────────────────────────
+# Each binding can be a single string or a list of strings.
+# Key names: f1-f12, ctrl+x, shift+x, alt+x, enter, esc, tab,
+#   up, down, left, right, pgup, pgdown, home, end, insert,
+#   backspace, delete, space
+[keys]
+quit          = ["f10", "ctrl+c"]
+toggle_panel  = "tab"
+swap_panels   = "ctrl+u"
+copy          = "f5"
+move          = "f6"
+mkdir         = "f7"
+delete        = "f8"
+rename        = "shift+f6"
+view          = "f3"
+edit          = "f4"
+
+# Navigation
+up            = ["up", "k"]
+down          = ["down", "j"]
+page_up       = "pgup"
+page_down     = "pgdown"
+home          = "home"
+end           = "end"
+go_back       = "backspace"
+
+# Selection
+toggle_select = "ctrl+t"
+select_up     = "shift+up"
+select_down   = "shift+down"
+
+# Search
+quick_search  = "ctrl+s"
