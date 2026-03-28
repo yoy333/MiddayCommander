@@ -1,6 +1,8 @@
 package menubar
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -32,6 +34,61 @@ func DefaultItems(cfg config.Config) []Item {
 	}
 }
 
+// ShiftItems returns menu bar items for the Shift+F1..F10 state.
+// Only positions with a shift+F binding get a label; the rest are blank.
+func ShiftItems(cfg config.Config) []Item {
+	items := make([]Item, 10)
+	// Always show F1-F10 key hints; label is empty unless a shift binding exists.
+	for i := range items {
+		items[i] = Item{Key: fmt.Sprintf("F%d", i+1)}
+	}
+
+	type entry struct {
+		keys  config.StringOrList
+		label string
+	}
+	bindings := []entry{
+		{cfg.Keys.Help, "Help"},
+		{cfg.Keys.Bookmarks, "Bookm"},
+		{cfg.Keys.View, "View"},
+		{cfg.Keys.Edit, "Edit"},
+		{cfg.Keys.Copy, "Copy"},
+		{cfg.Keys.Move, "Move"},
+		{cfg.Keys.Mkdir, "Mkdir"},
+		{cfg.Keys.Delete, "Delete"},
+		{cfg.Keys.FuzzyFind, "FZF"},
+		{cfg.Keys.Quit, "Quit"},
+		{cfg.Keys.Rename, "Rename"},
+		{cfg.Keys.GoTo, "GoTo"},
+		{cfg.Keys.TogglePanel, "Panel"},
+		{cfg.Keys.SwapPanels, "Swap"},
+		{cfg.Keys.ThemePicker, "Theme"},
+	}
+
+	for _, b := range bindings {
+		for _, k := range b.keys {
+			if pos := shiftFKeyPos(k); pos >= 0 {
+				items[pos].Label = b.label
+				items[pos].RawKey = k
+			}
+		}
+	}
+	return items
+}
+
+// shiftFKeyPos returns the 0-based menu position for a shift F-key string,
+// or -1 if the key is not a shift F-key. "f13" -> 0, "f18" -> 5, etc.
+func shiftFKeyPos(k string) int {
+	if len(k) < 3 || k[0] != 'f' {
+		return -1
+	}
+	n, err := strconv.Atoi(k[1:])
+	if err != nil || n < 13 || n > 20 {
+		return -1
+	}
+	return n - 13
+}
+
 func itemFromCfg(keys config.StringOrList, label string) Item {
 	if len(keys) == 0 {
 		return Item{Label: label}
@@ -45,8 +102,12 @@ func itemFromCfg(keys config.StringOrList, label string) Item {
 }
 
 // formatKeyDisplay turns "f5" into "F5", "ctrl+g" into "C-g", etc.
+// F13-F20 (BubbleTea's representation of Shift+F1..F8) display as "S-F1".."S-F8".
 func formatKeyDisplay(k string) string {
 	if len(k) > 1 && k[0] == 'f' && k[1] >= '0' && k[1] <= '9' {
+		if n, err := strconv.Atoi(k[1:]); err == nil && n >= 13 && n <= 20 {
+			return fmt.Sprintf("S-F%d", n-12)
+		}
 		return "F" + k[1:]
 	}
 	if strings.HasPrefix(k, "ctrl+") {

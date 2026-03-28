@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -73,6 +74,10 @@ type Model struct {
 
 	// Double-Esc to quit
 	lastEsc time.Time
+
+	// Shift F-key menu bar
+	shiftMenuItems []menubar.Item
+	shiftHeld      bool
 }
 
 // New creates a new application model.
@@ -106,14 +111,15 @@ func New() Model {
 	}
 
 	return Model{
-		leftPanel:     left,
-		rightPanel:    right,
-		focus:         FocusLeft,
-		keyMap:        KeyMapFromConfig(cfg.Keys),
-		theme:         th,
-		cfg:           cfg,
-		menuItems:     menubar.DefaultItems(cfg),
-		bookmarkStore: bookmark.LoadStore(),
+		leftPanel:      left,
+		rightPanel:     right,
+		focus:          FocusLeft,
+		keyMap:         KeyMapFromConfig(cfg.Keys),
+		theme:          th,
+		cfg:            cfg,
+		menuItems:      menubar.DefaultItems(cfg),
+		shiftMenuItems: menubar.ShiftItems(cfg),
+		bookmarkStore:  bookmark.LoadStore(),
 	}
 }
 
@@ -275,11 +281,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.Result:
 		return m.handleDialogResult(msg)
 
+	case ShiftPressMsg:
+		m.shiftHeld = true
+		return m, nil
+
+	case ShiftReleaseMsg:
+		m.shiftHeld = false
+		return m, nil
+
 	case tea.MouseMsg:
+		// Track shift modifier from mouse events (primary shift detection).
+		m.shiftHeld = msg.Shift
+
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			// Click on menu bar (last row)
 			if msg.Y == m.height-1 {
-				raw := menubar.HandleClick(msg.X, m.width, m.menuItems)
+				items := m.menuItems
+				if m.shiftHeld {
+					items = m.shiftMenuItems
+				}
+				raw := menubar.HandleClick(msg.X, m.width, items)
 				if raw != "" {
 					return m.dispatchKey(raw)
 				}
@@ -288,6 +309,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Track shift state for menu bar display.
+		// Detect shift from F13-F20 (shift+F1..F8) or any "shift+…" key name.
+		m.shiftHeld = hasShiftModifier(msg)
+
 		// Help overlay gets priority
 		if m.help != nil {
 			newHelp, cmd := m.help.Update(msg)
@@ -405,7 +430,11 @@ func (m Model) View() string {
 	rightView := m.rightPanel.View(m.theme)
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftView, rightView)
 
-	fkeyView := menubar.View(m.theme, m.width, m.menuItems)
+	items := m.menuItems
+	if m.shiftHeld {
+		items = m.shiftMenuItems
+	}
+	fkeyView := menubar.View(m.theme, m.width, items)
 
 	screen := lipgloss.JoinVertical(lipgloss.Left, panels, fkeyView)
 
@@ -466,6 +495,15 @@ func (m Model) dispatchKey(raw string) (tea.Model, tea.Cmd) {
 		return m.startThemePicker()
 	}
 	return m, nil
+}
+
+func isShiftFKey(msg tea.KeyMsg) bool {
+	// KeyType uses negative iota: KeyF13 (-46) > KeyF20 (-53).
+	return msg.Type <= tea.KeyF13 && msg.Type >= tea.KeyF20
+}
+
+func hasShiftModifier(msg tea.KeyMsg) bool {
+	return isShiftFKey(msg) || strings.Contains(msg.String(), "shift+")
 }
 
 func contains(keys config.StringOrList, val string) bool {

@@ -245,18 +245,47 @@ func (m Model) View(th theme.Theme, screenWidth, screenHeight int) string {
 	// Kind-specific content
 	switch m.kind {
 	case KindInput:
-		// Message label and input on the same line
+		// Message label and input with cursor at inputPos
 		label := " " + m.message + " "
 		labelW := len(label)
-		inputDisplay := m.input
-		maxInput := innerW - labelW - 1 // room for cursor
+		maxInput := innerW - labelW
 		if maxInput < 1 {
 			maxInput = 1
 		}
-		if len(inputDisplay) > maxInput {
-			inputDisplay = inputDisplay[len(inputDisplay)-maxInput:]
+
+		// Determine visible window of text around the cursor.
+		visStart := 0
+		visEnd := len(m.input)
+		if visEnd-visStart > maxInput {
+			// Keep cursor visible with some context on both sides.
+			visStart = m.inputPos - maxInput/2
+			if visStart < 0 {
+				visStart = 0
+			}
+			visEnd = visStart + maxInput
+			if visEnd > len(m.input) {
+				visEnd = len(m.input)
+				visStart = visEnd - maxInput
+				if visStart < 0 {
+					visStart = 0
+				}
+			}
 		}
-		line := dimStyle.Render(label) + inputStyle.Render(inputDisplay+"_")
+
+		cursorStyle := lipgloss.NewStyle().Background(highlight).Foreground(bg)
+		before := m.input[visStart:m.inputPos]
+		after := ""
+		cursorCh := " "
+		if m.inputPos < len(m.input) {
+			cursorCh = string(m.input[m.inputPos])
+			after = m.input[m.inputPos+1 : visEnd]
+		} else if visEnd < len(m.input) {
+			after = m.input[m.inputPos:visEnd]
+		}
+		line := dimStyle.Render(label) +
+			inputStyle.Render(before) +
+			cursorStyle.Render(cursorCh) +
+			inputStyle.Render(after)
 		lineW := lipgloss.Width(line)
 		if lineW < innerW {
 			line += bgStyle.Render(strings.Repeat(" ", innerW-lineW))

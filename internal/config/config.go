@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -82,13 +84,15 @@ func (s *StringOrList) UnmarshalTOML(data any) error {
 
 // Default returns a config with all defaults.
 func Default() Config {
+	keys := DefaultKeyBindings()
+	normalizeAllKeys(&keys)
 	return Config{
 		Theme: "",
 		Behavior: BehaviorConfig{
 			EnterAction: "edit",
 			SpaceAction: "preview",
 		},
-		Keys: DefaultKeyBindings(),
+		Keys: keys,
 	}
 }
 
@@ -155,6 +159,7 @@ func Load() Config {
 	}
 
 	mergeKeys(&cfg.Keys, &fileCfg.Keys)
+	normalizeAllKeys(&cfg.Keys)
 
 	return cfg
 }
@@ -192,6 +197,55 @@ func mergeKey(dst *StringOrList, src StringOrList) {
 	if len(src) > 0 {
 		*dst = src
 	}
+}
+
+// normalizeKey converts user-friendly "shift+fN" (N=1..8) to the BubbleTea
+// key string "f(N+12)". BubbleTea v1.x reports Shift+F1..F8 as F13..F20.
+func normalizeKey(k string) string {
+	if !strings.HasPrefix(k, "shift+f") {
+		return k
+	}
+	nStr := k[len("shift+f"):]
+	n, err := strconv.Atoi(nStr)
+	if err != nil || n < 1 || n > 8 {
+		return k
+	}
+	return fmt.Sprintf("f%d", n+12)
+}
+
+func normalizeSlice(s *StringOrList) {
+	for i, k := range *s {
+		(*s)[i] = normalizeKey(k)
+	}
+}
+
+func normalizeAllKeys(kb *KeyBindings) {
+	normalizeSlice(&kb.Quit)
+	normalizeSlice(&kb.TogglePanel)
+	normalizeSlice(&kb.SwapPanels)
+	normalizeSlice(&kb.Copy)
+	normalizeSlice(&kb.Move)
+	normalizeSlice(&kb.Mkdir)
+	normalizeSlice(&kb.Delete)
+	normalizeSlice(&kb.Rename)
+	normalizeSlice(&kb.View)
+	normalizeSlice(&kb.Edit)
+	normalizeSlice(&kb.Up)
+	normalizeSlice(&kb.Down)
+	normalizeSlice(&kb.PageUp)
+	normalizeSlice(&kb.PageDown)
+	normalizeSlice(&kb.Home)
+	normalizeSlice(&kb.End)
+	normalizeSlice(&kb.GoBack)
+	normalizeSlice(&kb.ToggleSelect)
+	normalizeSlice(&kb.SelectUp)
+	normalizeSlice(&kb.SelectDown)
+	normalizeSlice(&kb.QuickSearch)
+	normalizeSlice(&kb.GoTo)
+	normalizeSlice(&kb.FuzzyFind)
+	normalizeSlice(&kb.Bookmarks)
+	normalizeSlice(&kb.Help)
+	normalizeSlice(&kb.ThemePicker)
 }
 
 // SaveTheme writes the theme name to the config file, preserving other settings.

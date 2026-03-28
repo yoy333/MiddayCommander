@@ -2,6 +2,7 @@ package help
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -111,6 +112,9 @@ func fmtKeys(keys config.StringOrList) string {
 
 func formatKey(k string) string {
 	if len(k) > 1 && k[0] == 'f' && k[1] >= '0' && k[1] <= '9' {
+		if n, err := strconv.Atoi(k[1:]); err == nil && n >= 13 && n <= 20 {
+			return fmt.Sprintf("Shift-F%d", n-12)
+		}
 		return "F" + k[1:]
 	}
 	if strings.HasPrefix(k, "ctrl+") {
