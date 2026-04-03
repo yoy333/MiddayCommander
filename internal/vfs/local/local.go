@@ -19,6 +19,9 @@ func New(root string) *FS {
 }
 
 func (f *FS) resolve(name string) string {
+	if filepath.IsAbs(name) {
+		return filepath.Clean(name)
+	}
 	return filepath.Join(f.root, name)
 }
 

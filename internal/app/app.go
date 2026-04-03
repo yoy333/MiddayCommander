@@ -88,7 +88,7 @@ func New() Model {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		home = "/"
+		home = string(filepath.Separator)
 	}
 
 	cwd, err := os.Getwd()
@@ -96,7 +96,7 @@ func New() Model {
 		cwd = home
 	}
 
-	lfs := local.New("/")
+	lfs := local.New(string(filepath.Separator))
 
 	panelKM := panelKeyMapFromConfig(cfg.Keys)
 
